@@ -346,3 +346,46 @@ text
 
 ### Found/proved by:
 Phyo Thura Chit
+
+Fault 6
+## Min Thein Kyaw - 6705140026
+## C11 — Client Could Not Resolve www Through the Leased Resolver
+
+### Symptom (what we observed):
+Before the C9 fix:
+
+text
+[   0/3 ] C11  using the leased resolver 8.8.8.8, www did not resolve to 192.168.19.20 (got nothing).
+
+After the C9 fix, the resolver changed, but www still did not resolve:
+
+text
+[   0/3 ] C11  using the leased resolver 192.168.19.10, www did not resolve to 192.168.19.20 (got nothing).
+
+### Hypothesis (what we suspected and why):
+C11 is the integration check: DHCP gives the client a DNS server, and the client uses it to look up www. The message changing from 8.8.8.8 to 192.168.19.10 proved the DHCP part (C9) was now correct. Since the client was now asking the right server but still got nothing, we suspected the company DNS server itself could not be reached from the client.
+
+### Proof (the command that confirmed the cause):
+
+bash
+iptables -L INPUT -n -v --line-numbers
+
+text
+num   pkts bytes target     prot opt in     out     source               destination
+1       25  2153 DROP       17   --  *      *       0.0.0.0/0            0.0.0.0/0            udp dpt:53
+
+A firewall rule was dropping all DNS traffic to the server, so the leased resolver could never answer.
+
+### Fix (what we changed):
+No DHCP change was needed beyond C9. The firewall rule was deleted, and named's access settings were set (see the C1 section):
+
+bash
+iptables -D INPUT -p udp --dport 53 -j DROP
+
+### Confirmation (output showing it now works):
+
+text
+[   3/3 ] C11  client resolves www via the leased resolver
+
+### Found/proved by:
+MT
