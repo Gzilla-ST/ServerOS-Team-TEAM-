@@ -92,5 +92,57 @@ The checker then showed:
 [   2/2 ] C4   named-checkconf -z clean; named-checkzone clean
 ```
 
+## C3 — Reverse Lookup Returned Nothing
+
+### Symptom (what we observed):
+
+```text
+[   0/2 ] C3   reverse lookup of 192.168.19.10 did not return ns1 (got nothing). Check the reverse zone and its PTR.
+```
+
+### Hypothesis (what we suspected and why):
+The checker hinted at the reverse zone and its PTR record. But "got nothing" means no answer came back at all, not a wrong answer. C1 and C2 also got nothing at the same time. We suspected the reverse zone was fine and that something was stopping all DNS queries from reaching named.
+
+### Proof (the command that confirmed the cause):
+First, we checked that the reverse zone itself was valid:
+
+```bash
+named-checkzone 19.168.192.in-addr.arpa /etc/bind/db.novapeak.lab.rev
+```
+
+```text
+zone 19.168.192.in-addr.arpa/IN: loaded serial 2024010101
+OK
+```
+
+The reverse zone loaded with no errors, so the PTR data was not the problem. Then we checked the firewall:
+
+```bash
+iptables -L INPUT -n -v --line-numbers
+```
+
+```text
+num   pkts bytes target     prot opt in     out     source               destination
+1       25  2153 DROP       17   --  *      *       0.0.0.0/0            0.0.0.0/0            udp dpt:53
+```
+
+A rule was dropping all UDP port 53 (DNS) traffic, so reverse lookups never reached named.
+
+### Fix (what we changed):
+The firewall rule was removed (see the C1 section):
+
+```bash
+iptables -D INPUT -p udp --dport 53 -j DROP
+```
+
+No change to the reverse zone was needed.
+
+### Confirmation (output showing it now works):
+
+```text
+[   2/2 ] C3   reverse lookup of 192.168.19.10 returns ns1.
+```
+
+
 ### Found/proved by:
 Jack
