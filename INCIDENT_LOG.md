@@ -231,3 +231,56 @@ The checker showed:
 
 ### Found/proved by:
 Nay Shin Thant
+
+Fault 4 
+## Hein Lwin Oo - 6705140006
+## C2 — api Record Returned the Wrong IP
+
+### Symptom (what we observed):
+After the other DNS faults were fixed, three records were correct, but api was wrong:
+
+text
+[2.25/3 ] C2   api expected 192.168.19.40 got ['192.168.19.1']
+
+### Hypothesis (what we suspected and why):
+api returned a wrong IP, not nothing. So named was reachable and the zone was loaded, but it was serving wrong data for api. 192.168.19.1 is the gateway address (`option routers` in dhcpd.conf), not the API server.
+
+### Proof (the command that confirmed the cause):
+We edited the forward zone and set the api record to 192.168.19.40, then checked the file:
+
+bash
+cat /etc/bind/db.novapeak.lab
+
+text
+ns1 IN A 192.168.19.10
+www IN A 192.168.19.20
+mail IN A 192.168.19.30
+api IN A 192.168.19.40
+
+But the checker still failed:
+
+text
+[2.25/3 ] C2   api expected 192.168.19.40 got ['192.168.19.1']
+
+This proved the file was now correct, but named was still serving the old zone it had loaded into memory.
+
+### Fix (what we changed):
+We restarted named so it loaded the corrected zone:
+
+bash
+systemctl restart named
+
+### Confirmation (output showing it now works):
+
+bash
+ip netns exec client dig @192.168.19.10 api.novapeak.lab +short
+
+text
+192.168.19.40
+
+text
+[ 3.0/3 ] C2   all four A records correct
+TOTAL: 25.0 / 25
+
+### Found/proved by:
+Hein Lwin Oo
