@@ -27,6 +27,7 @@ Starting score: **11.0 / 25** → final score: **25.0 / 25**
 
 ---
 Fault 1
+## KaungThant- 6705140043
 ## C4 — Forward Zone Pointed at a Missing File
 
 ### Symptom (what we observed):
@@ -92,6 +93,7 @@ The checker then showed:
 [   2/2 ] C4   named-checkconf -z clean; named-checkzone clean
 ```
 
+Fault 2
 ## C3 — Reverse Lookup Returned Nothing
 
 ### Symptom (what we observed):
@@ -146,3 +148,86 @@ No change to the reverse zone was needed.
 
 ### Found/proved by:
 Jack
+
+
+Fault 3
+## Nay Shin Thant - 6705140032
+## C1 — Client Could Not Reach the DNS Server
+
+### Symptom (what we observed):
+
+```text
+[   0/2 ] C1   client cannot reach named at 192.168.19.10 (timeout/no status). Check listen-on, allow-query, firewall, and that it serves on lan0.
+```
+
+Testing from the client also timed out:
+
+```bash
+ip netns exec client dig
+```
+
+```text
+;; communications error to 8.8.8.8#53: timed out
+;; no servers could be reached
+```
+
+### Hypothesis (what we suspected and why):
+A timeout means no answer came back at all. named was running (`systemctl status` showed active), so we suspected something between the client and named was dropping the packets, most likely a firewall rule. The checker also listed `listen-on` and `allow-query` as possible causes.
+
+### Proof (the command that confirmed the cause):
+
+```bash
+iptables -L INPUT -n -v --line-numbers
+```
+
+```text
+Chain INPUT (policy ACCEPT 2948 packets, 207K bytes)
+num   pkts bytes target     prot opt in     out     source               destination
+1       25  2153 DROP       17   --  *      *       0.0.0.0/0            0.0.0.0/0            udp dpt:53
+```
+
+Protocol 17 is UDP and port 53 is DNS. The counter (25 packets) proved this rule was dropping real DNS queries.
+
+### Fix (what we changed):
+We deleted the firewall rule:
+
+```bash
+iptables -D INPUT -p udp --dport 53 -j DROP
+```
+
+We also set `/etc/bind/named.conf.options` so named serves the LAN as an authoritative-only server:
+
+```text
+listen-on { 192.168.19.10; };
+allow-query { 192.168.19.0/24; };
+recursion no;
+```
+
+Then we checked with `named-checkconf -z` and restarted with `systemctl restart named`.
+
+### Confirmation (output showing it now works):
+The firewall chain was empty:
+
+```text
+Chain INPUT (policy ACCEPT 3324 packets, 231K bytes)
+num   pkts bytes target     prot opt in     out     source               destination
+```
+
+A query to our server now got a reply in 1 ms instead of a timeout:
+
+```text
+;; ->>HEADER<<- opcode: QUERY, status: REFUSED, id: 62218
+;; Query time: 1 msec
+;; SERVER: 192.168.19.10#53(192.168.19.10) (UDP)
+```
+
+(REFUSED was caused by our typo, `www.novapeak. lab` with a space. What matters is that named replied, so the network path was open.)
+
+The checker showed:
+
+```text
+[   2/2 ] C1   named is authoritative for novapeak.lab and reachable from the client.
+```
+
+### Found/proved by:
+Nay Shin Thant
