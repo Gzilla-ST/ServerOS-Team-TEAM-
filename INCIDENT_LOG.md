@@ -284,3 +284,65 @@ TOTAL: 25.0 / 25
 
 ### Found/proved by:
 Hein Lwin Oo
+
+Fault 5
+## Phyo Thura Chit - 6705140015
+## C9 — DNS Advertised by DHCP
+
+### Symptom (what we observed):
+The checker reported that DHCP was giving clients the wrong DNS server:
+
+text
+[   0/3 ] C9   DHCP advertises 8.8.8.8, expected the company DNS 192.168.19.10 -- this is the integration the whole project is about
+
+### Hypothesis (what we suspected and why):
+We thought the DNS server address in the DHCP configuration was wrong. Because of this, clients were using Google's public DNS (8.8.8.8) instead of the company DNS server, so they could not find the company's internal hostnames such as www.novapeak.lab.
+
+### Proof (the command that confirmed the cause):
+
+bash
+cat /etc/dhcp/dhcpd.conf
+
+text
+subnet 192.168.19.0 netmask 255.255.255.0 {
+        range 192.168.19.104 192.168.19.144;
+        option routers 192.168.19.1;
+        option domain-name-servers 8.8.8.8;
+}
+
+This confirmed that the DHCP configuration was advertising the wrong DNS server.
+
+### Fix (what we changed):
+We opened the file with nano /etc/dhcp/dhcpd.conf and changed the line to:
+
+text
+option domain-name-servers 192.168.19.10;
+
+We checked the syntax before restarting:
+
+bash
+dhcpd -t -cf /etc/dhcp/dhcpd.conf
+
+text
+Config file: /etc/dhcp/dhcpd.conf
+Database file: /var/lib/dhcp/dhcpd.leases
+PID file: /var/run/dhcpd.pid
+
+No errors, so we restarted the service with `systemctl restart isc-dhcp-server`.
+
+### Confirmation (output showing it now works):
+
+bash
+systemctl status isc-dhcp-server --no-pager
+
+text
+Active: active (running) since Mon 2026-10-19 08:24:43 UTC; 9s ago
+dhcpd[3659]: Listening on LPF/lan0/22:c5:ba:ee:85:23/192.168.19.0/24
+
+The checker then showed:
+
+text
+[   3/3 ] C9   DHCP advertises the company DNS (192.168.19.10)
+
+### Found/proved by:
+Phyo Thura Chit
